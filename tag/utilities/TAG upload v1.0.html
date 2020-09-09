@@ -1,0 +1,417 @@
+<!doctype HTML>
+<html>
+<head>
+	<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+	<meta http-equiv="Pragma" content="no-cache" />
+	<meta http-equiv="Expires" content="0" />
+</head>
+<body>
+	<table style="width: 100%; text-align: center; height: 100%; position: absolute; top: 0; left: 0;" border="1">
+		<tr>
+			<td style="width: 50%; height: 60%;" valign="center">
+				TAG Servers:<br>
+				(one per line)<br>
+				<textarea id="servers" cols="20" rows="40"></textarea>
+			</td>
+			<td style="width: 50%; height: 60%;" valign="center">
+
+				<form method="post" id="loginForm">
+				Username:<br>
+				<input id="username" name="data[User][username]" type="text"><br>
+				Password:<br>
+				<input id="password" name="data[User][password]" type="password"><br>
+				</form>
+
+				<br><br>
+
+				XML config file:<br>
+				<form id="form" method="post" enctype="multipart/form-data">
+				<input type="file" id="file" name="data[file][0]">
+				<input type="hidden" name="APC_UPLOAD_PROGRESS" value="100">
+				</form>
+			</td>
+		</tr>
+		<tr>
+			<td colspan="2" valign="center" style="text-align: center;">
+				<button onclick="getConfirm()" type="button">Go!</button>
+			</td>
+		</tr>
+	</table>
+
+
+	<table id="results" style="width: 100%; height: 100%; top:0; left: 0; background: white; display: none; position: absolute;">
+		<tr>
+			<td style="width: 100%; height: 100%; text-align: center;" valign="center">
+				<table id="resultsTable"></table>
+			</td>
+		</tr>
+	</table>
+
+<style>
+#resultsTable {
+	margin-left: auto;
+	margin-right: auto;
+	border: 1px solid red;
+}
+#resultsTable tr td {
+	border: 1px solid red;
+	text-align: center;
+	margin: 5px;
+	padding: 5px;
+}
+.loadingImage {
+	width: 20px;
+	height: 20px;
+	margin-left: auto;
+	margin-right: auto;
+}
+</style>
+
+<script>
+
+
+document.getElementById('file').value = '';
+
+async function uploadFile(server) {
+
+	if (!document.getElementById('file').files[0] || !document.getElementById('file').files[0].name) {
+		alert("Failed to select file")
+		return -1;
+	}
+
+	return new Promise(function(resolve, reject) {
+
+	var eol = "\r\n"
+	var boundary = "-----------------------------155157097405393335967508029"
+
+	var file = document.getElementById('file').files[0];
+	if (file) {
+	    var reader = new FileReader();
+	    reader.readAsText(file, "UTF-8");
+	    reader.onload = async function (evt) {
+	        var filecontents = evt.target.result;
+
+			var body = boundary + eol +
+			'Content-Disposition: form-data; name="APC_UPLOAD_PROGRESS"' + eol + eol +
+			"100" + eol +
+			boundary + eol +
+			'Content-Disposition: form-data; name="data[file][0]"; filename="'+file.name+'"' + eol +
+			'Content-Type: text/xml' + eol + eol +
+			filecontents + eol +
+			boundary + '--' + eol;
+
+
+			let response = await fetch('http://'+server+'/api/2.0/system_files/command/UploadFile', {
+				headers: {
+					Authorization: 'Basic '+btoa(usernamePassword),
+					'Host': 'tag',
+					'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:72.0) Gecko/20100101 Firefox/72.0',
+					'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+					'Accept-Language': 'en-GB,en;q=0.5',
+					'Accept-Encoding': 'gzip, deflate',
+					'Content-Type': 'multipart/form-data; boundary=---------------------------155157097405393335967508029',
+					'Origin': 'http://tag',
+					'DNT': '1',
+					'Connection': 'keep-alive',
+					'Referer': 'http://tag/',
+					'Upgrade-Insecure-Requests': '1'
+				},
+				body: body,
+				method: 'POST'
+			})
+
+			console.log("upload status8: ", response.status)
+			console.log("headers: ", response.headers)
+
+			if (response.status == 401) {
+				alert("Incorrect login")
+				resolve(-1);
+				return;
+			}
+
+			let json = await response.json();
+
+			console.log("upload response json: ", json)
+
+			if (json.code == 422) {
+				// file already exists on server
+				resolve('ALREADY-EXISTS');
+			} else if (json['Task']) {
+				resolve(json['Task']['id']);
+			} else {
+				alert("Error: Could not upload file to: "+server)
+				console.log("Error: Could not upload file to: "+server)
+				resolve(-1);
+			}
+
+	    }
+	    reader.onerror = function (evt) {
+			alert("Could not read file")
+			resolve(-1);
+	    }
+	} else {
+		alert("Could not read file")
+		resolve(-1);
+	}
+
+	})
+}
+
+
+async function awaitTask(server, taskId) {
+
+	let prom = new Promise(function(resolve, reject) {
+
+		async function test() {
+			let response = await fetch('http://'+server+'/api/2.0/tasks/.json', {
+				headers: {
+					Authorization: 'Basic '+btoa(usernamePassword)
+				}
+			})
+
+			let json = await response.json();
+
+			console.log("Tasks json: ", json)
+
+			for (let i=0; i<json.length; i++) {
+				let task = json[i];
+
+				if (task.Task.id == taskId) {
+					if (task.Task.mode == 'Finished') {
+						setTimeout(function() {
+							resolve();
+						}, 1000);
+						return;
+					}
+				}
+			}
+
+			setTimeout(function() {
+				console.log("looping task test")
+				test();
+			}, 1000)
+		}
+
+		test();
+	})
+
+	return prom
+}
+
+
+async function getFileId(server) {
+
+	console.log("file: ", document.getElementById('file'))
+
+	let filename = document.getElementById('file').files[0].name
+	console.log("filename = :", filename)
+
+	let response = await fetch('http://'+server+'/api/2.0/system_files/.json', {
+		headers: {
+			Authorization: 'Basic '+btoa(usernamePassword)
+		}
+	})
+
+	let json = await response.json();
+
+	for (var i=0; i<json.length; i++) {
+		if (json[i].SystemFile.filename == filename) {
+			console.log("found uploaded file id")
+			return json[i].SystemFile.id;
+		}
+	}
+
+	alert("Error: Failed to find uploaded file ID for server: "+ server+" and filename: "+filename)
+	console.log("Error: Failed to find uploaded file ID for server: "+ server+" and filename: "+filename)
+	return -1;
+}
+
+
+async function applyFile(server, fileId) {
+
+	let response = await fetch('http://'+server+'/api/2.0/system_files/command/importConfigurationFile/'+fileId+'/.json?options[]=1', {
+		headers: {
+			Authorization: 'Basic '+btoa(usernamePassword)
+		}
+	})
+
+	let json = await response.json();
+
+	if (json['Task']) {
+		console.log("apply file task id: ", json['Task']['id'])
+		return json['Task']['id'];
+	}
+
+	alert("Error: Failed to apply file to server: "+ server+" and fileId: "+filename)
+	console.log("Error: Failed to apply file to server: "+ server+" and fileId: "+filename)
+	return -1;
+}
+
+
+async function saveConfig(server) {
+
+	let response = await fetch('http://'+server+'/api/2.0/devices/command/saveConfig.json', {
+		headers: {
+			Authorization: 'Basic '+btoa(usernamePassword)
+		}
+	})
+
+	let json = await response.json();
+
+	if (json['Task']) {
+		console.log("save config task id: ", json['Task']['id'])
+		return json['Task']['id'];
+	}
+
+	alert("Error: Failed to save config to server: "+ server)
+	console.log("Error: Failed to save config to server: "+ server)
+	return -1;
+}
+
+async function go(servers) {
+
+	var table = '<tr><td>Server</td><td>File uploaded?</td><td>Get file ID?</td><td>Apply file?</td><td>Save config?</td></tr>'
+
+	for (var i=0; i<servers.length; i++) {
+		let server = servers[i];
+
+		if (server) {
+			table += '<tr><td>'+server+'</td>'
+			table += '<td id="result-'+server+'-1">No</td>'
+			table += '<td id="result-'+server+'-2">No</td>'
+			table += '<td id="result-'+server+'-3">No</td>'
+			table += '<td id="result-'+server+'-4">No</td>'
+			table += '</tr>'
+		}
+	}
+
+	table += '</table>'
+
+	document.getElementById('resultsTable').innerHTML = table;
+	document.getElementById('results').style.display = "";
+
+	for (var i=0; i<servers.length; i++) {
+		let server = servers[i];
+
+		if (server) {
+			await doServer(server);
+		}
+	}
+}
+
+function timeout(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function getConfirm() {
+
+	if (!document.getElementById('username').value) {
+		alert("You must enter a username")
+		return;
+	}
+
+	if (!document.getElementById('password').value) {
+		alert("You must enter a password")
+		return;
+	}
+
+	usernamePassword = document.getElementById('username').value + ':' + document.getElementById('password').value;
+
+	let serversList = document.getElementById('servers').value;
+
+	if (!serversList || serversList.length < 3) {
+		alert("You must list servers, one per line")
+		return;
+	}
+
+	if (!document.getElementById('file').files[0] || !document.getElementById('file').files[0].name) {
+		alert("You must select a file")
+		return;
+	}
+
+	serversList = serversList.replace("\r", "").split("\n");
+
+	let servers = [];
+
+	for (var i=0; i<serversList.length; i++) {
+		let server = serversList[i];
+
+		if (server) {
+			if (server.length < 3) {
+				alert("One of your servers is less than 3 characters - not allowed")
+				return;
+			} else {
+				servers.push(server)
+			}
+		}
+	}
+
+
+	let confirmation = window.confirm("Are you sure you want to upload and apply file to "+servers.length+" servers?")
+
+	if (confirmation) {
+		go(servers)
+	} else {
+		console.log("confirmation cancelled")
+	}
+}
+
+async function doServer(server) {
+
+	document.getElementById('result-'+server+'-1').innerHTML = '<img src="loading.gif" class="loadingImage">'
+
+	let taskId = await uploadFile(server);
+
+	console.log("after await upload. taskId: ", taskId)
+
+	if (taskId == -1) return;
+
+	if (taskId != 'ALREADY-EXISTS') {
+		await awaitTask(server, taskId)
+	} else {
+		// File already existed on server
+	}
+
+	document.getElementById('result-'+server+'-1').innerHTML = 'Done'
+
+	document.getElementById('result-'+server+'-2').innerHTML = '<img src="loading.gif" class="loadingImage">'
+
+	let fileId = await getFileId(server);
+
+	console.log("file id: ", fileId)
+
+	if (fileId == -1) return;
+
+	document.getElementById('result-'+server+'-2').innerHTML = 'Done'
+
+	document.getElementById('result-'+server+'-3').innerHTML = '<img src="loading.gif" class="loadingImage">'
+
+	taskId = await applyFile(server, fileId)
+
+	if (taskId == -1) return;
+
+	await awaitTask(server, taskId)
+	console.log("apply finished")
+
+	document.getElementById('result-'+server+'-3').innerHTML = 'Done'
+
+	document.getElementById('result-'+server+'-4').innerHTML = '<img src="loading.gif" class="loadingImage">'
+
+	taskId = await saveConfig(server)
+
+	if (taskId == -1) return;
+
+	await awaitTask(server, taskId)
+	console.log("apply finished")
+
+	document.getElementById('result-'+server+'-4').innerHTML = 'Done'
+
+	timeout(1000)
+}
+
+
+</script>
+
+
+</body>
+</html>

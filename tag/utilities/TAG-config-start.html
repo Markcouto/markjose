@@ -1,0 +1,197 @@
+<!doctype HTML>
+<html>
+<head>
+	<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+	<meta http-equiv="Pragma" content="no-cache" />
+	<meta http-equiv="Expires" content="0" />
+</head>
+<body>
+	<table style="width: 100%; text-align: center; height: 100%; position: absolute; top: 0; left: 0;" border="1">
+		<tr>
+			<td colspan="2" style="text-align: center;">
+				<h1>Start 4 outputs per TAG</h1>
+			</td>
+		</tr>
+		<tr>
+			<td style="width: 50%; height: 60%;" valign="center">
+				TAG Servers:<br>
+				(one per line)<br>
+				<textarea id="servers" cols="20" rows="40"></textarea>
+			</td>
+			<td style="width: 50%; height: 60%;" valign="center">
+
+				<form method="post" id="loginForm">
+				Username:<br>
+				<input id="username" name="data[User][username]" type="text"><br>
+				Password:<br>
+				<input id="password" name="data[User][password]" type="password"><br>
+				</form>
+			</td>
+		</tr>
+		<tr>
+			<td colspan="2" valign="center" style="text-align: center;">
+				<button onclick="getConfirm()" type="button">Start outputs!</button>
+			</td>
+		</tr>
+	</table>
+
+
+	<table id="results" style="width: 100%; height: 100%; top:0; left: 0; background: white; display: none; position: absolute;">
+		<tr>
+			<td style="width: 100%; height: 100%; text-align: center;" valign="center">
+				<table id="resultsTable"></table>
+			</td>
+		</tr>
+	</table>
+
+<style>
+#resultsTable {
+	margin-left: auto;
+	margin-right: auto;
+	border: 1px solid red;
+}
+#resultsTable tr td {
+	border: 1px solid red;
+	text-align: center;
+	margin: 5px;
+	padding: 5px;
+}
+.loadingImage {
+	width: 20px;
+	height: 20px;
+	margin-left: auto;
+	margin-right: auto;
+}
+</style>
+
+<script>
+
+
+async function startOutputs(server) {
+	document.getElementById('result-'+server+'-1').innerHTML = '<img src="loading.gif" class="loadingImage">'
+	await fetch('http://'+server+'/api/2.0/outputs/command/start/1/.json', {
+		headers: {
+			Authorization: 'Basic '+btoa(usernamePassword)
+		}
+	})
+	document.getElementById('result-'+server+'-1').innerHTML = 'Done'
+
+	document.getElementById('result-'+server+'-2').innerHTML = '<img src="loading.gif" class="loadingImage">'
+	await fetch('http://'+server+'/api/2.0/outputs/command/start/2/.json', {
+		headers: {
+			Authorization: 'Basic '+btoa(usernamePassword)
+		}
+	})
+	document.getElementById('result-'+server+'-2').innerHTML = 'Done'
+
+	document.getElementById('result-'+server+'-3').innerHTML = '<img src="loading.gif" class="loadingImage">'
+	await fetch('http://'+server+'/api/2.0/outputs/command/start/3/.json', {
+		headers: {
+			Authorization: 'Basic '+btoa(usernamePassword)
+		}
+	})
+	document.getElementById('result-'+server+'-3').innerHTML = 'Done'
+
+	document.getElementById('result-'+server+'-4').innerHTML = '<img src="loading.gif" class="loadingImage">'
+	await fetch('http://'+server+'/api/2.0/outputs/command/start/4/.json', {
+		headers: {
+			Authorization: 'Basic '+btoa(usernamePassword)
+		}
+	})
+	document.getElementById('result-'+server+'-4').innerHTML = 'Done'
+}
+
+async function go(servers) {
+
+	var table = '<tr><td>Server</td><td>Output 1</td><td>Output 2</td><td>Output 3</td><td>Output 4</td></tr>'
+
+	for (var i=0; i<servers.length; i++) {
+		let server = servers[i];
+
+		if (server) {
+			table += '<tr><td>'+server+'</td>'
+			table += '<td id="result-'+server+'-1">No</td>'
+			table += '<td id="result-'+server+'-2">No</td>'
+			table += '<td id="result-'+server+'-3">No</td>'
+			table += '<td id="result-'+server+'-4">No</td>'
+			table += '</tr>'
+		}
+	}
+
+	table += '</table>'
+
+	document.getElementById('resultsTable').innerHTML = table;
+	document.getElementById('results').style.display = "";
+
+	for (var i=0; i<servers.length; i++) {
+		let server = servers[i];
+
+		if (server) {
+			await doServer(server);
+		}
+	}
+}
+
+function timeout(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function getConfirm() {
+
+	if (!document.getElementById('username').value) {
+		alert("You must enter a username")
+		return;
+	}
+
+	if (!document.getElementById('password').value) {
+		alert("You must enter a password")
+		return;
+	}
+
+	usernamePassword = document.getElementById('username').value + ':' + document.getElementById('password').value;
+
+	let serversList = document.getElementById('servers').value;
+
+	if (!serversList || serversList.length < 3) {
+		alert("You must list servers, one per line")
+		return;
+	}
+
+	serversList = serversList.replace("\r", "").split("\n");
+
+	let servers = [];
+
+	for (var i=0; i<serversList.length; i++) {
+		let server = serversList[i];
+
+		if (server) {
+			if (server.length < 3) {
+				alert("One of your servers is less than 3 characters - not allowed")
+				return;
+			} else {
+				servers.push(server)
+			}
+		}
+	}
+
+
+	let confirmation = window.confirm("Are you sure you want to start 4 outputs on each of "+servers.length+" servers?")
+
+	if (confirmation) {
+		go(servers)
+	}
+}
+
+async function doServer(server) {
+
+	await startOutputs(server);
+
+	timeout(1000)
+}
+
+
+</script>
+
+
+</body>
+</html>
